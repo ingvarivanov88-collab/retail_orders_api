@@ -1,5 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+import binascii
+import os
 
 
 # Кастомная модель пользователя с типом (магазин или покупатель)
@@ -33,11 +35,12 @@ class Category(models.Model):
         return self.name
 
 
-# Общий продукт (название и категория).
+# Общий продукт (название, описание и категория).
 # Цены и остатки храним в ProductInfo, потому что один товар
 # может быть в разных магазинах по разной цене.
 class Product(models.Model):
     name = models.CharField(max_length=80, verbose_name='Название')
+    description = models.TextField(verbose_name='Описание', blank=True, null=True)
     category = models.ForeignKey(Category, verbose_name='Категория', related_name='products', blank=True, on_delete=models.CASCADE)
 
     def __str__(self):
@@ -138,3 +141,20 @@ class OrderItem(models.Model):
         constraints = [
             models.UniqueConstraint(fields=['order_id', 'product_info'], name='unique_order_item'),
         ]
+
+
+# --- ТОКЕН ПОДТВЕРЖДЕНИЯ EMAIL ---
+# Используется для подтверждения регистрации (письмо с токеном).
+class ConfirmEmailToken(models.Model):
+    user = models.ForeignKey(User, related_name='confirm_email_tokens', on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    key = models.CharField(max_length=64, db_index=True, unique=True)
+
+    def save(self, *args, **kwargs):
+        # Генерируем токен, если его ещё нет
+        if not self.key:
+            self.key = binascii.hexlify(os.urandom(32)).decode()
+        return super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Токен для {self.user.username}"

@@ -1,6 +1,9 @@
 from rest_framework import serializers
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from .models import ProductInfo, ProductParameter, Contact, OrderItem, Order
+
+# Получаем кастомную модель User через get_user_model()
+User = get_user_model()
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -9,7 +12,7 @@ class UserSerializer(serializers.ModelSerializer):
     last_name = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
-        model = User
+        model = User  # <-- Используем класс модели, а не строку
         fields = ['id', 'username', 'email', 'password', 'first_name', 'last_name']
 
     def create(self, validated_data):

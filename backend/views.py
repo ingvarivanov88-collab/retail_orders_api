@@ -10,7 +10,10 @@ from django.core.exceptions import ValidationError
 from requests import get
 from yaml import SafeLoader
 from yaml import load as yaml_load
-from .models import ProductInfo, Order, OrderItem, Contact, Shop, Category, Product, Parameter, ProductParameter
+from .models import (
+    ProductInfo, Order, OrderItem, Contact, Shop, Category, Product, Parameter, ProductParameter,
+    ConfirmEmailToken
+)
 from .serializers import ProductInfoSerializer, UserSerializer, ContactSerializer, OrderSerializer
 from .tasks import send_order_confirmation_task, send_invoice_to_admin_task
 
@@ -55,6 +58,30 @@ class ProductDetailView(generics.RetrieveAPIView):
 class RegisterView(generics.CreateAPIView):
     serializer_class = UserSerializer
     permission_classes = [permissions.AllowAny]
+
+
+# Подтверждение регистрации по email
+class ConfirmRegistrationView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        token_key = request.data.get('token')
+        if not token_key:
+            return Response({"error": "Токен не указан"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            token = ConfirmEmailToken.objects.get(key=token_key)
+        except ConfirmEmailToken.DoesNotExist:
+            return Response({"error": "Неверный токен"}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = token.user
+        user.is_active = True
+        user.save()
+
+        # Удаляем токен после использования
+        token.delete()
+
+        return Response({"message": "Аккаунт подтверждён"})
 
 
 # Логин. Возвращает токен для TokenAuthentication.
@@ -250,7 +277,11 @@ class PartnerUpdateView(APIView):
 
                 # Импортируем новые товары
                 for item in data['goods']:
-                    product, _ = Product.objects.get_or_create(name=item['name'], category_id=item['category'])
+                    product, _ = Product.objects.get_or_create(
+                        name=item['name'],
+                        category_id=item['category'],
+                        defaults={'description': item.get('description', '')}
+                    )
                     product_info = ProductInfo.objects.create(
                         product_id=product.id,
                         external_id=item['id'],
@@ -270,6 +301,37 @@ class PartnerUpdateView(APIView):
 
                 return Response({'Status': True})
         return Response({'Status': False, 'Errors': 'Не указаны все необходимые аргументы'}, status=400)
+
+
+# Заказы поставщика (товары из его прайса).
+class PartnerOrdersView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # Ищем магазин, принадлежащий текущему пользователю
+        try:
+            shop = Shop.objects.get(user=request.user)
+        except Shop.DoesNotExist:
+            return Response({"error": "У вас нет магазина"}, status=status.HTTP_404_NOT_FOUND)
+
+        # Находим все заказы, в которых есть товары из этого магазина
+        orders = Order.objects.filter(
+            ordered_items__product_info__shop=shop
+        ).exclude(state='basket').distinct().order_by('-dt')
+
+        data = []
+        for order in orders:
+            # Берём только товары из этого магазина
+            items = order.ordered_items.filter(product_info__shop=shop)
+            items_data = [{"product": i.product_info.product.name, "quantity": i.quantity, "price": i.product_info.price} for i in items]
+            data.append({
+                "order_id": order.id,
+                "state": order.state,
+                "dt": order.dt,
+                "items": items_data
+            })
+
+        return Response(data)
 
 
 # Просто визуальный каталог, чтобы можно было глазами посмотреть товары.
