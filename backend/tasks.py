@@ -41,14 +41,13 @@ def do_import(file_path):
                         category.shops.add(shop)
                         break
 
-            # Сохраняем описание товара
-            product, _ = Product.objects.get_or_create(
+            # Используем update_or_create, чтобы обновлять описание
+            product, _ = Product.objects.update_or_create(
                 name=item['name'],
                 category=category,
                 defaults={'description': item.get('description', '')}
             )
 
-            # Используем external_id, чтобы обновлять, а не создавать дубли
             product_info, _ = ProductInfo.objects.update_or_create(
                 external_id=item['id'],
                 product=product,
@@ -77,14 +76,13 @@ def do_import(file_path):
 
             products = cat_data.get('products', [])
             for prod_data in products:
-                # Сохраняем описание товара
-                product, _ = Product.objects.get_or_create(
+                # Используем update_or_create, чтобы обновлять описание
+                product, _ = Product.objects.update_or_create(
                     name=prod_data['name'],
                     category=category,
                     defaults={'description': prod_data.get('description', '')}
                 )
 
-                # Если нет id — генерируем на основе названия (чтобы не было дублей)
                 external_id = prod_data.get('id', 0)
                 if not external_id:
                     external_id = abs(hash(prod_data['name'])) % 1000000

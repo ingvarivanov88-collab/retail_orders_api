@@ -2,31 +2,33 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>ТехноМир — Каталог товаров</title>
+    <title>Каталог товаров — Retail Orders API</title>
     <style>
-        body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 20px; }
-        h1 { text-align: center; color: #333; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; max-width: 1200px; margin: 0 auto; }
-        .card { background: white; border-radius: 10px; padding: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); transition: transform 0.2s; }
-        .card:hover { transform: translateY(-5px); }
-        .card h3 { margin-top: 0; color: #2c3e50; }
-        .price { font-size: 1.4em; font-weight: bold; color: #e74c3c; }
-        .shop { color: #7f8c8d; font-size: 0.9em; }
-        .params { font-size: 0.85em; color: #555; margin-top: 10px; border-top: 1px solid #eee; padding-top: 10px; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; }
+        h1 { text-align: center; color: #1a1a2e; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; max-width: 1200px; margin: 0 auto; }
+        .card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); transition: transform 0.2s, box-shadow 0.2s; display: flex; flex-direction: column; }
+        .card:hover { transform: translateY(-5px); box-shadow: 0 8px 15px rgba(0,0,0,0.1); }
+        .card h3 { margin-top: 0; color: #16213e; font-size: 1.2em; }
+        .card p { color: #666; font-size: 0.9em; flex-grow: 1; }
+        .price { font-size: 1.5em; font-weight: bold; color: #e94560; margin: 10px 0; }
+        .shop { color: #8d99ae; font-size: 0.85em; margin-bottom: 10px; }
+        .params { font-size: 0.85em; color: #555; border-top: 1px solid #eee; padding-top: 10px; }
+        .params div { margin-bottom: 4px; }
     </style>
 </head>
 <body>
-    <h1>🛒 Каталог товаров «ТехноМир»</h1>
+    <h1>🛍️ Каталог товаров</h1>
     <div class="grid">
         {% for product in products %}
         <div class="card">
-            <h3>{{ product.name }}</h3>
-            <p>{{ product.description }}</p>
+            <h3>{{ product.product.name }}</h3>
+            <p>{{ product.product.description }}</p>
             <div class="price">{{ product.price }} ₽</div>
-            <div class="shop">Магазин: {{ product.shop.name }}</div>
+            <div class="shop">🏪 {{ product.shop.name }}</div>
             <div class="params">
-                {% for param in product.parameters.all %}
-                    <div>{{ param.name }}: {{ param.value }}</div>
+                {% for param in product.product_parameters.all %}
+                    <div><strong>{{ param.parameter.name }}:</strong> {{ param.value }}</div>
                 {% endfor %}
             </div>
         </div>
