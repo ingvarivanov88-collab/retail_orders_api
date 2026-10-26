@@ -1,5 +1,14 @@
 from django.db import models
-from django.contrib.auth.models import User
+from django.contrib.auth.models import AbstractUser
+
+
+# Кастомная модель пользователя с типом (магазин или покупатель)
+class User(AbstractUser):
+    USER_TYPE_CHOICES = (
+        ('shop', 'Магазин'),
+        ('buyer', 'Покупатель'),
+    )
+    type = models.CharField(verbose_name='Тип пользователя', choices=USER_TYPE_CHOICES, max_length=5, default='buyer')
 
 
 # Магазин (поставщик). У каждого магазина свой пользователь,
@@ -15,7 +24,7 @@ class Shop(models.Model):
 
 
 # Категория товаров. Одна категория может быть у нескольких магазинов,
-# поэтому связь many-to-many.
+# поэтому связь многие-ко-многим.
 class Category(models.Model):
     name = models.CharField(max_length=40, verbose_name='Название')
     shops = models.ManyToManyField(Shop, verbose_name='Магазины', related_name='categories', blank=True)

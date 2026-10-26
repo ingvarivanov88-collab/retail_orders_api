@@ -8,20 +8,22 @@ from django.db.models import Q
 from django.core.validators import URLValidator
 from django.core.exceptions import ValidationError
 from requests import get
-from yaml import load, Loader
+from yaml import SafeLoader
+from yaml import load as yaml_load
 from .models import ProductInfo, Order, OrderItem, Contact, Shop, Category, Product, Parameter, ProductParameter
 from .serializers import ProductInfoSerializer, UserSerializer, ContactSerializer, OrderSerializer
 from .tasks import send_order_confirmation_task, send_invoice_to_admin_task
 
 
-# Список товаров. Сделал через ListAPIView, чтобы потом легко добавить пагинацию.
-# Поиск и фильтры беру из query-параметров (search, category, shop).
+# Список товаров с поиском и фильтрацией.
+# Сделал через ListAPIView, чтобы потом легко добавить пагинацию.
 class ProductListView(generics.ListAPIView):
     serializer_class = ProductInfoSerializer
     permission_classes = [permissions.AllowAny]
 
     def get_queryset(self):
-        queryset = ProductInfo.objects.filter(quantity__gt=0).prefetch_related('product_parameters')
+        # Фильтруем только активные магазины
+        queryset = ProductInfo.objects.filter(quantity__gt=0, shop__state=True).prefetch_related('product_parameters')
 
         # Поиск по названию товара (например, ?search=iPhone)
         search = self.request.query_params.get('search', None)
@@ -41,6 +43,13 @@ class ProductListView(generics.ListAPIView):
         return queryset
 
 
+# Детали одного товара.
+class ProductDetailView(generics.RetrieveAPIView):
+    queryset = ProductInfo.objects.all()
+    serializer_class = ProductInfoSerializer
+    permission_classes = [permissions.AllowAny]
+
+
 # Регистрация. Использую стандартный CreateAPIView,
 # а логику сохранения пользователя описал в UserSerializer.
 class RegisterView(generics.CreateAPIView):
@@ -48,8 +57,7 @@ class RegisterView(generics.CreateAPIView):
     permission_classes = [permissions.AllowAny]
 
 
-# Логин. Возвращаю просто сообщение об успехе, потому что
-# авторизация идёт через сессию (cookie), а не через токен.
+# Логин. Возвращает токен для TokenAuthentication.
 class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -60,7 +68,9 @@ class LoginView(APIView):
 
         if user is not None:
             login(request, user)
-            return Response({"message": "Успешный вход", "username": user.username})
+            from rest_framework.authtoken.models import Token
+            token, _ = Token.objects.get_or_create(user=user)
+            return Response({"message": "Успешный вход", "username": user.username, "token": token.key})
         else:
             return Response({"error": "Неверный логин или пароль"}, status=status.HTTP_401_UNAUTHORIZED)
 
@@ -183,6 +193,33 @@ class OrderView(APIView):
         return Response(serializer.data)
 
 
+# Детали заказа.
+class OrderDetailView(generics.RetrieveAPIView):
+    serializer_class = OrderSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Order.objects.filter(user=self.request.user).exclude(state='basket')
+
+
+# Обновление статуса заказа (для админа/поставщика).
+class OrderStatusUpdateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, order_id):
+        try:
+            order = Order.objects.get(id=order_id)
+        except Order.DoesNotExist:
+            return Response({"error": "Заказ не найден"}, status=status.HTTP_404_NOT_FOUND)
+
+        new_state = request.data.get('state')
+        if new_state in dict(Order.STATUS_CHOICES):
+            order.state = new_state
+            order.save()
+            return Response({"message": "Статус обновлён", "state": order.state})
+        return Response({"error": "Неверный статус"}, status=status.HTTP_400_BAD_REQUEST)
+
+
 # Обновление прайса поставщиком.
 # Берём URL с YAML-файлом, скачиваем и импортируем товары.
 class PartnerUpdateView(APIView):
@@ -198,7 +235,7 @@ class PartnerUpdateView(APIView):
                 return Response({'Status': False, 'Error': str(e)}, status=400)
             else:
                 stream = get(url).content
-                data = load(stream, Loader=Loader)
+                data = yaml_load(stream, Loader=SafeLoader)
 
                 # Создаём магазин или находим существующий
                 shop, _ = Shop.objects.get_or_create(name=data['shop'], user_id=request.user.id)
@@ -237,7 +274,7 @@ class PartnerUpdateView(APIView):
 
 # Просто визуальный каталог, чтобы можно было глазами посмотреть товары.
 def catalog_view(request):
-    products = ProductInfo.objects.filter(quantity__gt=0).prefetch_related('product_parameters')
+    products = ProductInfo.objects.filter(quantity__gt=0, shop__state=True).prefetch_related('product_parameters')
     return render(request, 'catalog.html', {'products': products})
 
 
