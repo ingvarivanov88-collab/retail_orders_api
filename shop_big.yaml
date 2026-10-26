@@ -25,6 +25,20 @@ categories:
         parameters:
           - name: "Память"
             value: "256 ГБ"
+      - name: "Google Pixel 10 Pro"
+        description: "Чистый Android, лучшая камера"
+        price: 99990
+        quantity: 15
+        parameters:
+          - name: "Память"
+            value: "256 ГБ"
+      - name: "OnePlus 13"
+        description: "Быстрая зарядка, флагманский процессор"
+        price: 79990
+        quantity: 22
+        parameters:
+          - name: "Память"
+            value: "512 ГБ"
   - name: "Ноутбуки"
     products:
       - name: "MacBook Pro 16 M5"
@@ -38,6 +52,24 @@ categories:
         description: "RTX 5070, Intel Core Ultra 9"
         price: 229990
         quantity: 7
+      - name: "Dell XPS 15"
+        description: "OLED-экран, стильный корпус"
+        price: 189990
+        quantity: 6
+        parameters:
+          - name: "Процессор"
+            value: "Intel Core i9"
+      - name: "Lenovo ThinkPad X1 Carbon"
+        description: "Лёгкий, надёжный, для бизнеса"
+        price: 159990
+        quantity: 10
+        parameters:
+          - name: "Процессор"
+            value: "Intel Core i7"
+      - name: "HP Spectre x360"
+        description: "Трансформер, сенсорный экран"
+        price: 139990
+        quantity: 8
   - name: "Аксессуары"
     products:
       - name: "AirPods Pro 3"
@@ -48,3 +80,15 @@ categories:
         description: "Прозрачный, с поддержкой зарядки"
         price: 4990
         quantity: 100
+      - name: "Зарядка USB-C 65W"
+        description: "Быстрая зарядка для ноутбуков и смартфонов"
+        price: 3490
+        quantity: 50
+      - name: "Мышь Logitech MX Master 4"
+        description: "Беспроводная, эргономичная"
+        price: 8990
+        quantity: 25
+      - name: "Клавиатура Keychron K8"
+        description: "Механическая, с подсветкой"
+        price: 12990
+        quantity: 15
