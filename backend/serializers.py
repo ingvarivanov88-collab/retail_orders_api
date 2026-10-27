@@ -2,7 +2,6 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import ProductInfo, ProductParameter, Contact, OrderItem, Order
 
-# Получаем кастомную модель User через get_user_model()
 User = get_user_model()
 
 
@@ -24,8 +23,7 @@ class UserSerializer(serializers.ModelSerializer):
             first_name=validated_data.get('first_name', ''),
             last_name=validated_data.get('last_name', '')
         )
-        # По умолчанию пользователь неактивен (подтверждение по email)
-        user.is_active = False
+        user.is_active = False  # неактивен до подтверждения email
         user.save()
         return user
 
@@ -52,7 +50,10 @@ class ProductInfoSerializer(serializers.ModelSerializer):
 class ContactSerializer(serializers.ModelSerializer):
     class Meta:
         model = Contact
-        fields = ['id', 'first_name', 'last_name', 'city', 'street', 'house', 'structure', 'building', 'apartment', 'phone']
+        fields = [
+            'id', 'first_name', 'last_name', 'middle_name', 'email',
+            'city', 'street', 'house', 'structure', 'building', 'apartment', 'phone'
+        ]
 
 
 class OrderItemSerializer(serializers.ModelSerializer):

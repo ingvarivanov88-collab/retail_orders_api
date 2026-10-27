@@ -36,8 +36,6 @@ class Category(models.Model):
 
 
 # Общий продукт (название, описание и категория).
-# Цены и остатки храним в ProductInfo, потому что один товар
-# может быть в разных магазинах по разной цене.
 class Product(models.Model):
     name = models.CharField(max_length=80, verbose_name='Название')
     description = models.TextField(verbose_name='Описание', blank=True, null=True)
@@ -48,7 +46,6 @@ class Product(models.Model):
 
 
 # Конкретный товар в конкретном магазине.
-# Внешний ID нужен, чтобы не дублировать товары при повторном импорте.
 class ProductInfo(models.Model):
     model = models.CharField(max_length=80, verbose_name='Модель', blank=True)
     external_id = models.PositiveIntegerField(verbose_name='Внешний ИД')
@@ -59,7 +56,6 @@ class ProductInfo(models.Model):
     price_rrc = models.PositiveIntegerField(verbose_name='Рекомендуемая розничная цена')
 
     class Meta:
-        # Один и тот же товар в одном магазине не должен дублироваться
         constraints = [
             models.UniqueConstraint(fields=['product', 'shop', 'external_id'], name='unique_product_info'),
         ]
@@ -69,7 +65,6 @@ class ProductInfo(models.Model):
 
 
 # Справочник параметров (например, "Цвет", "Память").
-# Вынес отдельно, чтобы не дублировать названия в каждом товаре.
 class Parameter(models.Model):
     name = models.CharField(max_length=40, verbose_name='Название')
 
@@ -78,25 +73,24 @@ class Parameter(models.Model):
 
 
 # Значение конкретного параметра для конкретного товара.
-# Например, для iPhone это будет "Память: 256 ГБ".
 class ProductParameter(models.Model):
     product_info = models.ForeignKey(ProductInfo, verbose_name='Информация о продукте', related_name='product_parameters', blank=True, on_delete=models.CASCADE)
     parameter = models.ForeignKey(Parameter, verbose_name='Параметр', related_name='product_parameters', blank=True, on_delete=models.CASCADE)
     value = models.CharField(verbose_name='Значение', max_length=100)
 
     class Meta:
-        # У одного товара не может быть два одинаковых параметра
         constraints = [
             models.UniqueConstraint(fields=['product_info', 'parameter'], name='unique_product_parameter'),
         ]
 
 
 # Контакт (адрес доставки). У одного пользователя может быть несколько.
-# Поля "корпус" и "строение" сделал необязательными, потому что не у всех домов они есть.
 class Contact(models.Model):
     user = models.ForeignKey(User, verbose_name='Пользователь', related_name='contacts', blank=True, on_delete=models.CASCADE)
     first_name = models.CharField(max_length=50, verbose_name='Имя', blank=True, null=True)
     last_name = models.CharField(max_length=50, verbose_name='Фамилия', blank=True, null=True)
+    middle_name = models.CharField(max_length=50, verbose_name='Отчество', blank=True, null=True)
+    email = models.EmailField(verbose_name='Email', blank=True, null=True)
     city = models.CharField(max_length=50, verbose_name='Город')
     street = models.CharField(max_length=100, verbose_name='Улица')
     house = models.CharField(max_length=15, verbose_name='Дом', blank=True)
@@ -109,9 +103,7 @@ class Contact(models.Model):
         return f'{self.city} {self.street} {self.house}'
 
 
-# Заказ. Сначала создаётся со статусом 'basket' (это и есть корзина),
-# потом при оформлении меняем статус на 'new'.
-# ВАЖНО: при удалении контакта заказ НЕ удаляется (SET_NULL).
+# Заказ. При удалении контакта заказ НЕ удаляется (SET_NULL).
 class Order(models.Model):
     STATUS_CHOICES = [
         ('basket', 'Статус корзины'),
@@ -137,28 +129,25 @@ class Order(models.Model):
         return f"Заказ #{self.id} ({self.user.username}) - {self.state}"
 
 
-# Позиция заказа. Хранит, какой товар и в каком количестве заказали.
+# Позиция заказа.
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, verbose_name='Заказ', related_name='ordered_items', blank=True, on_delete=models.CASCADE)
     product_info = models.ForeignKey(ProductInfo, verbose_name='Информация о продукте', related_name='ordered_items', blank=True, on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField(verbose_name='Количество')
 
     class Meta:
-        # Один товар в одном заказе должен быть одной строкой, а не дублироваться
         constraints = [
             models.UniqueConstraint(fields=['order_id', 'product_info'], name='unique_order_item'),
         ]
 
 
-# --- ТОКЕН ПОДТВЕРЖДЕНИЯ EMAIL ---
-# Используется для подтверждения регистрации (письмо с токеном).
+# Токен подтверждения email.
 class ConfirmEmailToken(models.Model):
     user = models.ForeignKey(User, related_name='confirm_email_tokens', on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
     key = models.CharField(max_length=64, db_index=True, unique=True)
 
     def save(self, *args, **kwargs):
-        # Генерируем токен, если его ещё нет
         if not self.key:
             self.key = binascii.hexlify(os.urandom(32)).decode()
         return super().save(*args, **kwargs)

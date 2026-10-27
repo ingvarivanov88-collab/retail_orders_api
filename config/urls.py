@@ -4,7 +4,7 @@ from django.http import HttpResponse
 from backend.views import (
     ProductListView, ProductDetailView, RegisterView, LoginView, CartView, OrderView, catalog_view, ContactView,
     PartnerUpdateView, home_view, OrderDetailView, OrderStatusUpdateView, PartnerOrdersView,
-    ConfirmRegistrationView
+    ConfirmRegistrationView, PartnerStateUpdateView
 )
 from backend.views_import import import_products_view
 
@@ -16,11 +16,8 @@ def profile_view(request):
 
 urlpatterns = [
     path('', home_view, name='home'),
-
-    # Импорт товаров должен быть ПЕРЕД admin/ (иначе Django перехватит)
     path('admin/import/', import_products_view, name='import-products'),
     path('admin/', admin.site.urls),
-
     path('api-auth/', include('rest_framework.urls')),
     path('api/password_reset/', include('django_rest_passwordreset.urls', namespace='password_reset')),
     path('accounts/profile/', profile_view, name='profile'),
@@ -38,4 +35,5 @@ urlpatterns = [
     path('api/orders/<int:order_id>/status/', OrderStatusUpdateView.as_view(), name='order-status'),
     path('api/partner/update/', PartnerUpdateView.as_view(), name='partner-update'),
     path('api/partner/orders/', PartnerOrdersView.as_view(), name='partner-orders'),
+    path('api/partner/state/', PartnerStateUpdateView.as_view(), name='partner-state'),
 ]

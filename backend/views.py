@@ -89,7 +89,6 @@ class LoginView(APIView):
         if not login_field or not password:
             return Response({"error": "Укажите email/username и пароль"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Пробуем найти по email, потом по username
         user = User.objects.filter(email=login_field).first() or User.objects.filter(username=login_field).first()
 
         if user is None:
@@ -123,7 +122,6 @@ class CartView(APIView):
         order, _ = Order.objects.get_or_create(user=request.user, state='basket')
         product_info_id = request.data.get('product_info_id')
 
-        # Проверяем quantity
         try:
             quantity = int(request.data.get('quantity', 1))
         except (ValueError, TypeError):
@@ -137,7 +135,6 @@ class CartView(APIView):
         except ProductInfo.DoesNotExist:
             return Response({"error": "Товар не найден"}, status=status.HTTP_404_NOT_FOUND)
 
-        # Проверяем, что товара хватает на складе
         if quantity > product_info.quantity:
             return Response(
                 {"error": f"На складе только {product_info.quantity} шт."},
@@ -245,7 +242,7 @@ class OrderDetailView(generics.RetrieveAPIView):
         return Order.objects.filter(user=self.request.user).exclude(state='basket')
 
 
-# Обновление статуса заказа (для админа/поставщика).
+# Обновление статуса заказа.
 class OrderStatusUpdateView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -263,7 +260,7 @@ class OrderStatusUpdateView(APIView):
         return Response({"error": "Неверный статус"}, status=status.HTTP_400_BAD_REQUEST)
 
 
-# Обновление прайса поставщиком.
+# Обновление прайса поставщиком (без удаления старых ProductInfo).
 class PartnerUpdateView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -285,29 +282,29 @@ class PartnerUpdateView(APIView):
                     category_object, _ = Category.objects.get_or_create(id=category['id'], name=category['name'])
                     category_object.shops.add(shop.id)
 
-                ProductInfo.objects.filter(shop_id=shop.id).delete()
-
                 for item in data['goods']:
                     product, _ = Product.objects.update_or_create(
                         name=item['name'],
                         category_id=item['category'],
                         defaults={'description': item.get('description', '')}
                     )
-                    product_info = ProductInfo.objects.create(
-                        product_id=product.id,
+                    product_info, _ = ProductInfo.objects.update_or_create(
                         external_id=item['id'],
-                        model=item['model'],
-                        price=item['price'],
-                        price_rrc=item['price_rrc'],
-                        quantity=item['quantity'],
-                        shop_id=shop.id
+                        product=product,
+                        shop=shop,
+                        defaults={
+                            'model': item.get('model', ''),
+                            'price': item['price'],
+                            'price_rrc': item.get('price_rrc', item['price']),
+                            'quantity': item.get('quantity', 0),
+                        }
                     )
                     for name, value in item['parameters'].items():
                         parameter_object, _ = Parameter.objects.get_or_create(name=name)
-                        ProductParameter.objects.create(
-                            product_info_id=product_info.id,
-                            parameter_id=parameter_object.id,
-                            value=value
+                        ProductParameter.objects.update_or_create(
+                            product_info=product_info,
+                            parameter=parameter_object,
+                            defaults={'value': value}
                         )
 
                 return Response({'Status': True})
@@ -340,6 +337,25 @@ class PartnerOrdersView(APIView):
             })
 
         return Response(data)
+
+
+# Переключение приёма заказов поставщиком.
+class PartnerStateUpdateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request):
+        try:
+            shop = Shop.objects.get(user=request.user)
+        except Shop.DoesNotExist:
+            return Response({"error": "У вас нет магазина"}, status=status.HTTP_404_NOT_FOUND)
+
+        new_state = request.data.get('state')
+        if new_state is None:
+            return Response({"error": "Укажите state (true/false)"}, status=status.HTTP_400_BAD_REQUEST)
+
+        shop.state = bool(new_state)
+        shop.save()
+        return Response({"message": "Статус приёма заказов обновлён", "state": shop.state})
 
 
 # Визуальный каталог.
