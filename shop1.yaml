@@ -1,24 +1,40 @@
 shop: "Магазин на диване"
 categories:
-  - name: "Электроника"
-    products:
-      - name: "Телевизор"
-        description: "4K, 55 дюймов"
-        price: 50000
-        quantity: 10
-        parameters:
-          - name: "Диагональ"
-            value: "55"
-          - name: "Разрешение"
-            value: "4K"
-      - name: "Смартфон"
-        price: 30000
-        quantity: 20
-        parameters:
-          - name: "Память"
-            value: "128 ГБ"
-  - name: "Одежда"
-    products:
-      - name: "Футболка"
-        price: 1500
-        quantity: 100
+  - id: 10
+    name: "Электроника"
+  - id: 11
+    name: "Одежда"
+
+goods:
+  - id: 1001
+    category: 10
+    model: "tv-4k-55"
+    name: "Телевизор"
+    description: "4K, 55 дюймов"
+    price: 50000
+    price_rrc: 55000
+    quantity: 10
+    parameters:
+      "Диагональ": "55"
+      "Разрешение": "4K"
+  - id: 1002
+    category: 10
+    model: "smartphone-128"
+    name: "Смартфон"
+    description: "Современный смартфон с хорошей камерой"
+    price: 30000
+    price_rrc: 32000
+    quantity: 20
+    parameters:
+      "Память": "128 ГБ"
+  - id: 1003
+    category: 11
+    model: "tshirt-basic"
+    name: "Футболка"
+    description: "Хлопковая, удобная"
+    price: 1500
+    price_rrc: 1800
+    quantity: 100
+    parameters:
+      "Размер": "M"
+      "Цвет": "Белый"

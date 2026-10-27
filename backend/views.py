@@ -2,7 +2,7 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
-from django.contrib.auth import authenticate, login
+from django.contrib.auth import authenticate, login, get_user_model
 from django.shortcuts import render
 from django.db.models import Q
 from django.core.validators import URLValidator
@@ -17,28 +17,25 @@ from .models import (
 from .serializers import ProductInfoSerializer, UserSerializer, ContactSerializer, OrderSerializer
 from .tasks import send_order_confirmation_task, send_invoice_to_admin_task
 
+User = get_user_model()
+
 
 # Список товаров с поиском и фильтрацией.
-# Сделал через ListAPIView, чтобы потом легко добавить пагинацию.
 class ProductListView(generics.ListAPIView):
     serializer_class = ProductInfoSerializer
     permission_classes = [permissions.AllowAny]
 
     def get_queryset(self):
-        # Фильтруем только активные магазины
         queryset = ProductInfo.objects.filter(quantity__gt=0, shop__state=True).prefetch_related('product_parameters')
 
-        # Поиск по названию товара (например, ?search=iPhone)
         search = self.request.query_params.get('search', None)
         if search:
             queryset = queryset.filter(Q(product__name__icontains=search))
 
-        # Фильтр по категории (например, ?category=Смартфоны)
         category = self.request.query_params.get('category', None)
         if category:
             queryset = queryset.filter(product__category__name__icontains=category)
 
-        # Фильтр по магазину (например, ?shop=ТехноМир)
         shop = self.request.query_params.get('shop', None)
         if shop:
             queryset = queryset.filter(shop__name__icontains=shop)
@@ -53,14 +50,13 @@ class ProductDetailView(generics.RetrieveAPIView):
     permission_classes = [permissions.AllowAny]
 
 
-# Регистрация. Использую стандартный CreateAPIView,
-# а логику сохранения пользователя описал в UserSerializer.
+# Регистрация.
 class RegisterView(generics.CreateAPIView):
     serializer_class = UserSerializer
     permission_classes = [permissions.AllowAny]
 
 
-# Подтверждение регистрации по email
+# Подтверждение регистрации по email.
 class ConfirmRegistrationView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -77,22 +73,32 @@ class ConfirmRegistrationView(APIView):
         user = token.user
         user.is_active = True
         user.save()
-
-        # Удаляем токен после использования
         token.delete()
 
         return Response({"message": "Аккаунт подтверждён"})
 
 
-# Логин. Возвращает токен для TokenAuthentication.
+# Логин (по email или username). Возвращает токен.
 class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        username = request.data.get('username')
+        login_field = request.data.get('email') or request.data.get('username')
         password = request.data.get('password')
-        user = authenticate(request, username=username, password=password)
 
+        if not login_field or not password:
+            return Response({"error": "Укажите email/username и пароль"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Пробуем найти по email, потом по username
+        user = User.objects.filter(email=login_field).first() or User.objects.filter(username=login_field).first()
+
+        if user is None:
+            return Response({"error": "Неверный логин или пароль"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        if not user.is_active:
+            return Response({"error": "Аккаунт не подтверждён. Проверьте почту."}, status=status.HTTP_403_FORBIDDEN)
+
+        user = authenticate(request, username=user.username, password=password)
         if user is not None:
             login(request, user)
             from rest_framework.authtoken.models import Token
@@ -102,17 +108,16 @@ class LoginView(APIView):
             return Response({"error": "Неверный логин или пароль"}, status=status.HTTP_401_UNAUTHORIZED)
 
 
-# Корзина. Использую Order со статусом 'basket' — так проще,
-# потому что при оформлении заказа нужно просто сменить статус, а не переносить товары.
+# Корзина.
 class CartView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        # Если корзины нет — создаём
         order, _ = Order.objects.get_or_create(user=request.user, state='basket')
         items = order.ordered_items.all()
-        data = [{"id": item.id, "product_info": item.product_info.product.name, "quantity": item.quantity} for item in items]
-        return Response({"cart_items": data})
+        data = [{"id": item.id, "product_info": item.product_info.product.name, "quantity": item.quantity, "price": item.product_info.price} for item in items]
+        total = sum(item.product_info.price * item.quantity for item in items)
+        return Response({"cart_items": data, "total": total})
 
     def post(self, request):
         order, _ = Order.objects.get_or_create(user=request.user, state='basket')
@@ -124,12 +129,14 @@ class CartView(APIView):
         except ProductInfo.DoesNotExist:
             return Response({"error": "Товар не найден"}, status=status.HTTP_404_NOT_FOUND)
 
-        # Если товар уже в корзине — увеличиваем количество, иначе создаём новую строку
-        order_item, created = OrderItem.objects.get_or_create(order=order, product_info=product_info)
+        # Ищем существующую позицию или создаём новую с quantity
+        order_item, created = OrderItem.objects.get_or_create(
+            order=order,
+            product_info=product_info,
+            defaults={'quantity': quantity}  # <-- ДОБАВИЛИ
+        )
         if not created:
             order_item.quantity += quantity
-        else:
-            order_item.quantity = quantity
         order_item.save()
 
         return Response({"message": "Товар добавлен в корзину"}, status=status.HTTP_201_CREATED)
@@ -149,7 +156,7 @@ class CartView(APIView):
             return Response({"error": "Товар не найден в корзине"}, status=status.HTTP_404_NOT_FOUND)
 
 
-# Контакты. Сделал один view на все операции: GET (список), POST (создать), DELETE (удалить).
+# Контакты.
 class ContactView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -174,7 +181,7 @@ class ContactView(APIView):
             return Response({"error": "Контакт не найден"}, status=status.HTTP_404_NOT_FOUND)
 
 
-# Заказы. POST — оформить заказ из корзины, GET — посмотреть список.
+# Заказы.
 class OrderView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -185,17 +192,14 @@ class OrderView(APIView):
         except Contact.DoesNotExist:
             return Response({"error": "Адрес не найден"}, status=status.HTTP_404_NOT_FOUND)
 
-        # Находим корзину
         order = Order.objects.filter(user=request.user, state='basket').first()
         if not order or not order.ordered_items.exists():
             return Response({"error": "Корзина пуста"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Меняем статус на "Новый" и привязываем контакт
         order.state = 'new'
         order.contact = contact
         order.save()
 
-        # Собираем данные для писем
         items_data = []
         for item in order.ordered_items.all():
             items_data.append({
@@ -204,7 +208,6 @@ class OrderView(APIView):
                 "price": str(item.product_info.price)
             })
 
-        # Отправляем письма через Celery (чтобы не тормозить ответ)
         user_email = request.user.email
         if user_email:
             send_order_confirmation_task.delay(user_email, order.id, items_data)
@@ -214,7 +217,6 @@ class OrderView(APIView):
         return Response({"message": "Заказ оформлен", "order_id": order.id}, status=status.HTTP_201_CREATED)
 
     def get(self, request):
-        # Показываем только оформленные заказы (не корзину)
         orders = Order.objects.filter(user=request.user).exclude(state='basket').order_by('-dt')
         serializer = OrderSerializer(orders, many=True)
         return Response(serializer.data)
@@ -248,7 +250,6 @@ class OrderStatusUpdateView(APIView):
 
 
 # Обновление прайса поставщиком.
-# Берём URL с YAML-файлом, скачиваем и импортируем товары.
 class PartnerUpdateView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -264,20 +265,16 @@ class PartnerUpdateView(APIView):
                 stream = get(url).content
                 data = yaml_load(stream, Loader=SafeLoader)
 
-                # Создаём магазин или находим существующий
                 shop, _ = Shop.objects.get_or_create(name=data['shop'], user_id=request.user.id)
 
-                # Добавляем категории
                 for category in data['categories']:
                     category_object, _ = Category.objects.get_or_create(id=category['id'], name=category['name'])
                     category_object.shops.add(shop.id)
 
-                # Удаляем старые товары этого магазина, чтобы не было дублей
                 ProductInfo.objects.filter(shop_id=shop.id).delete()
 
-                # Импортируем новые товары
                 for item in data['goods']:
-                    product, _ = Product.objects.get_or_create(
+                    product, _ = Product.objects.update_or_create(
                         name=item['name'],
                         category_id=item['category'],
                         defaults={'description': item.get('description', '')}
@@ -303,25 +300,22 @@ class PartnerUpdateView(APIView):
         return Response({'Status': False, 'Errors': 'Не указаны все необходимые аргументы'}, status=400)
 
 
-# Заказы поставщика (товары из его прайса).
+# Заказы поставщика.
 class PartnerOrdersView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        # Ищем магазин, принадлежащий текущему пользователю
         try:
             shop = Shop.objects.get(user=request.user)
         except Shop.DoesNotExist:
             return Response({"error": "У вас нет магазина"}, status=status.HTTP_404_NOT_FOUND)
 
-        # Находим все заказы, в которых есть товары из этого магазина
         orders = Order.objects.filter(
             ordered_items__product_info__shop=shop
         ).exclude(state='basket').distinct().order_by('-dt')
 
         data = []
         for order in orders:
-            # Берём только товары из этого магазина
             items = order.ordered_items.filter(product_info__shop=shop)
             items_data = [{"product": i.product_info.product.name, "quantity": i.quantity, "price": i.product_info.price} for i in items]
             data.append({
@@ -334,12 +328,12 @@ class PartnerOrdersView(APIView):
         return Response(data)
 
 
-# Просто визуальный каталог, чтобы можно было глазами посмотреть товары.
+# Визуальный каталог.
 def catalog_view(request):
     products = ProductInfo.objects.filter(quantity__gt=0, shop__state=True).prefetch_related('product_parameters')
     return render(request, 'catalog.html', {'products': products})
 
 
-# Главная страница с навигацией по проекту.
+# Главная страница.
 def home_view(request):
     return render(request, 'home.html')

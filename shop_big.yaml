@@ -1,94 +1,161 @@
 shop: "ТехноМир 2026"
 categories:
-  - name: "Смартфоны"
-    products:
-      - name: "iPhone 17 Pro Max"
-        description: "Титан, чип A19 Pro, 1 ТБ"
-        price: 189990
-        quantity: 12
-        parameters:
-          - name: "Память"
-            value: "1 ТБ"
-          - name: "Цвет"
-            value: "Титан"
-      - name: "Samsung Galaxy S26 Ultra"
-        description: "ИИ-камера 300 МП, 12 ГБ RAM"
-        price: 149990
-        quantity: 18
-        parameters:
-          - name: "Память"
-            value: "512 ГБ"
-      - name: "Xiaomi 16 Pro"
-        description: "Лучшее соотношение цены и качества"
-        price: 89990
-        quantity: 30
-        parameters:
-          - name: "Память"
-            value: "256 ГБ"
-      - name: "Google Pixel 10 Pro"
-        description: "Чистый Android, лучшая камера"
-        price: 99990
-        quantity: 15
-        parameters:
-          - name: "Память"
-            value: "256 ГБ"
-      - name: "OnePlus 13"
-        description: "Быстрая зарядка, флагманский процессор"
-        price: 79990
-        quantity: 22
-        parameters:
-          - name: "Память"
-            value: "512 ГБ"
-  - name: "Ноутбуки"
-    products:
-      - name: "MacBook Pro 16 M5"
-        description: "Чип M5 Pro, 36 ГБ RAM"
-        price: 279990
-        quantity: 5
-        parameters:
-          - name: "Процессор"
-            value: "M5 Pro"
-      - name: "ASUS ROG Zephyrus G16"
-        description: "RTX 5070, Intel Core Ultra 9"
-        price: 229990
-        quantity: 7
-      - name: "Dell XPS 15"
-        description: "OLED-экран, стильный корпус"
-        price: 189990
-        quantity: 6
-        parameters:
-          - name: "Процессор"
-            value: "Intel Core i9"
-      - name: "Lenovo ThinkPad X1 Carbon"
-        description: "Лёгкий, надёжный, для бизнеса"
-        price: 159990
-        quantity: 10
-        parameters:
-          - name: "Процессор"
-            value: "Intel Core i7"
-      - name: "HP Spectre x360"
-        description: "Трансформер, сенсорный экран"
-        price: 139990
-        quantity: 8
-  - name: "Аксессуары"
-    products:
-      - name: "AirPods Pro 3"
-        description: "Активное шумоподавление нового поколения"
-        price: 29990
-        quantity: 40
-      - name: "Чехол MagSafe для iPhone 17"
-        description: "Прозрачный, с поддержкой зарядки"
-        price: 4990
-        quantity: 100
-      - name: "Зарядка USB-C 65W"
-        description: "Быстрая зарядка для ноутбуков и смартфонов"
-        price: 3490
-        quantity: 50
-      - name: "Мышь Logitech MX Master 4"
-        description: "Беспроводная, эргономичная"
-        price: 8990
-        quantity: 25
-      - name: "Клавиатура Keychron K8"
-        description: "Механическая, с подсветкой"
-        price: 12990
-        quantity: 15
+  - id: 1
+    name: "Смартфоны"
+  - id: 2
+    name: "Ноутбуки"
+  - id: 3
+    name: "Аксессуары"
+
+goods:
+  - id: 101
+    category: 1
+    model: "apple/iphone-17-pro-max"
+    name: "iPhone 17 Pro Max"
+    description: "Титан, чип A19 Pro, 1 ТБ"
+    price: 189990
+    price_rrc: 199990
+    quantity: 12
+    parameters:
+      "Память": "1 ТБ"
+      "Цвет": "Титан"
+  - id: 102
+    category: 1
+    model: "samsung/galaxy-s26-ultra"
+    name: "Samsung Galaxy S26 Ultra"
+    description: "ИИ-камера 300 МП, 12 ГБ RAM"
+    price: 149990
+    price_rrc: 159990
+    quantity: 18
+    parameters:
+      "Память": "512 ГБ"
+  - id: 103
+    category: 1
+    model: "xiaomi/16-pro"
+    name: "Xiaomi 16 Pro"
+    description: "Лучшее соотношение цены и качества"
+    price: 89990
+    price_rrc: 94990
+    quantity: 30
+    parameters:
+      "Память": "256 ГБ"
+  - id: 104
+    category: 1
+    model: "google/pixel-10-pro"
+    name: "Google Pixel 10 Pro"
+    description: "Чистый Android, лучшая камера"
+    price: 99990
+    price_rrc: 104990
+    quantity: 15
+    parameters:
+      "Память": "256 ГБ"
+  - id: 105
+    category: 1
+    model: "oneplus/13"
+    name: "OnePlus 13"
+    description: "Быстрая зарядка, флагманский процессор"
+    price: 79990
+    price_rrc: 84990
+    quantity: 22
+    parameters:
+      "Память": "512 ГБ"
+  - id: 201
+    category: 2
+    model: "apple/macbook-pro-16-m5"
+    name: "MacBook Pro 16 M5"
+    description: "Чип M5 Pro, 36 ГБ RAM"
+    price: 279990
+    price_rrc: 289990
+    quantity: 5
+    parameters:
+      "Процессор": "M5 Pro"
+  - id: 202
+    category: 2
+    model: "asus/rog-zephyrus-g16"
+    name: "ASUS ROG Zephyrus G16"
+    description: "RTX 5070, Intel Core Ultra 9"
+    price: 229990
+    price_rrc: 239990
+    quantity: 7
+    parameters:
+      "Процессор": "Intel Core Ultra 9"
+  - id: 203
+    category: 2
+    model: "dell/xps-15"
+    name: "Dell XPS 15"
+    description: "OLED-экран, стильный корпус"
+    price: 189990
+    price_rrc: 199990
+    quantity: 6
+    parameters:
+      "Процессор": "Intel Core i9"
+  - id: 204
+    category: 2
+    model: "lenovo/thinkpad-x1-carbon"
+    name: "Lenovo ThinkPad X1 Carbon"
+    description: "Лёгкий, надёжный, для бизнеса"
+    price: 159990
+    price_rrc: 169990
+    quantity: 10
+    parameters:
+      "Процессор": "Intel Core i7"
+  - id: 205
+    category: 2
+    model: "hp/spectre-x360"
+    name: "HP Spectre x360"
+    description: "Трансформер, сенсорный экран"
+    price: 139990
+    price_rrc: 149990
+    quantity: 8
+    parameters:
+      "Процессор": "Intel Core i7"
+  - id: 301
+    category: 3
+    model: "apple/airpods-pro-3"
+    name: "AirPods Pro 3"
+    description: "Активное шумоподавление нового поколения"
+    price: 29990
+    price_rrc: 31990
+    quantity: 40
+    parameters:
+      "Тип": "Наушники"
+  - id: 302
+    category: 3
+    model: "apple/magsafe-case-iphone-17"
+    name: "Чехол MagSafe для iPhone 17"
+    description: "Прозрачный, с поддержкой зарядки"
+    price: 4990
+    price_rrc: 5990
+    quantity: 100
+    parameters:
+      "Материал": "Силикон"
+  - id: 303
+    category: 3
+    model: "usb-c-65w"
+    name: "Зарядка USB-C 65W"
+    description: "Быстрая зарядка для ноутбуков и смартфонов"
+    price: 3490
+    price_rrc: 3990
+    quantity: 50
+    parameters:
+      "Мощность": "65W"
+  - id: 304
+    category: 3
+    model: "logitech/mx-master-4"
+    name: "Мышь Logitech MX Master 4"
+    description: "Беспроводная, эргономичная"
+    price: 8990
+    price_rrc: 9990
+    quantity: 25
+    parameters:
+      "Тип": "Мышь"
+  - id: 305
+    category: 3
+    model: "keychron/k8"
+    name: "Клавиатура Keychron K8"
+    description: "Механическая, с подсветкой"
+    price: 12990
+    price_rrc: 13990
+    quantity: 15
+    parameters:
+      "Тип": "Клавиатура"
