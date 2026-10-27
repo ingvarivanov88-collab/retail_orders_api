@@ -111,6 +111,7 @@ class Contact(models.Model):
 
 # Заказ. Сначала создаётся со статусом 'basket' (это и есть корзина),
 # потом при оформлении меняем статус на 'new'.
+# ВАЖНО: при удалении контакта заказ НЕ удаляется (SET_NULL).
 class Order(models.Model):
     STATUS_CHOICES = [
         ('basket', 'Статус корзины'),
@@ -124,7 +125,13 @@ class Order(models.Model):
     user = models.ForeignKey(User, verbose_name='Пользователь', related_name='orders', blank=True, on_delete=models.CASCADE)
     dt = models.DateTimeField(auto_now_add=True)
     state = models.CharField(verbose_name='Статус', choices=STATUS_CHOICES, max_length=15)
-    contact = models.ForeignKey(Contact, verbose_name='Контакт', blank=True, null=True, on_delete=models.CASCADE)
+    contact = models.ForeignKey(
+        Contact,
+        verbose_name='Контакт',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
 
     def __str__(self):
         return f"Заказ #{self.id} ({self.user.username}) - {self.state}"

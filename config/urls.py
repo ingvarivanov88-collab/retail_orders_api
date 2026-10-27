@@ -16,8 +16,11 @@ def profile_view(request):
 
 urlpatterns = [
     path('', home_view, name='home'),
-    path('admin/', admin.site.urls),
+
+    # Импорт товаров должен быть ПЕРЕД admin/ (иначе Django перехватит)
     path('admin/import/', import_products_view, name='import-products'),
+    path('admin/', admin.site.urls),
+
     path('api-auth/', include('rest_framework.urls')),
     path('api/password_reset/', include('django_rest_passwordreset.urls', namespace='password_reset')),
     path('accounts/profile/', profile_view, name='profile'),
@@ -25,7 +28,7 @@ urlpatterns = [
     path('api/products/', ProductListView.as_view(), name='product-list'),
     path('api/products/<int:pk>/', ProductDetailView.as_view(), name='product-detail'),
     path('api/register/', RegisterView.as_view(), name='register'),
-    path('api/register/confirm/', ConfirmRegistrationView.as_view(), name='register-confirm'),  # <-- ДОБАВИЛИ
+    path('api/register/confirm/', ConfirmRegistrationView.as_view(), name='register-confirm'),
     path('api/login/', LoginView.as_view(), name='login'),
     path('api/cart/', CartView.as_view(), name='cart'),
     path('api/contacts/', ContactView.as_view(), name='contacts'),

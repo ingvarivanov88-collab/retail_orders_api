@@ -122,18 +122,32 @@ class CartView(APIView):
     def post(self, request):
         order, _ = Order.objects.get_or_create(user=request.user, state='basket')
         product_info_id = request.data.get('product_info_id')
-        quantity = int(request.data.get('quantity', 1))
+
+        # Проверяем quantity
+        try:
+            quantity = int(request.data.get('quantity', 1))
+        except (ValueError, TypeError):
+            return Response({"error": "quantity должно быть числом"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if quantity <= 0:
+            return Response({"error": "quantity должно быть больше 0"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             product_info = ProductInfo.objects.get(id=product_info_id, quantity__gt=0)
         except ProductInfo.DoesNotExist:
             return Response({"error": "Товар не найден"}, status=status.HTTP_404_NOT_FOUND)
 
-        # Ищем существующую позицию или создаём новую с quantity
+        # Проверяем, что товара хватает на складе
+        if quantity > product_info.quantity:
+            return Response(
+                {"error": f"На складе только {product_info.quantity} шт."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         order_item, created = OrderItem.objects.get_or_create(
             order=order,
             product_info=product_info,
-            defaults={'quantity': quantity}  # <-- ДОБАВИЛИ
+            defaults={'quantity': quantity}
         )
         if not created:
             order_item.quantity += quantity

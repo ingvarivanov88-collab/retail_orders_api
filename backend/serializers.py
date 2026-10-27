@@ -10,7 +10,7 @@ class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
     first_name = serializers.CharField(required=False, allow_blank=True)
     last_name = serializers.CharField(required=False, allow_blank=True)
-    email = serializers.EmailField(required=True)  # Email обязателен
+    email = serializers.EmailField(required=True)
 
     class Meta:
         model = User
@@ -57,7 +57,7 @@ class ContactSerializer(serializers.ModelSerializer):
 
 class OrderItemSerializer(serializers.ModelSerializer):
     product_info = serializers.StringRelatedField()
-    sum = serializers.SerializerMethodField()  # <-- ДОБАВИЛИ (сумма по позиции)
+    sum = serializers.SerializerMethodField()
 
     class Meta:
         model = OrderItem
@@ -69,7 +69,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(source='ordered_items', many=True, read_only=True)
-    total = serializers.SerializerMethodField()  # <-- ДОБАВИЛИ (общая сумма заказа)
+    total = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
