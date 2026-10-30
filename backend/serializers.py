@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import ProductInfo, ProductParameter, Contact, OrderItem, Order
+import uuid
 
 User = get_user_model()
 
@@ -10,14 +11,29 @@ class UserSerializer(serializers.ModelSerializer):
     first_name = serializers.CharField(required=False, allow_blank=True)
     last_name = serializers.CharField(required=False, allow_blank=True)
     email = serializers.EmailField(required=True)
+    username = serializers.CharField(required=False, allow_blank=True)  # необязательный
 
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'password', 'first_name', 'last_name']
 
+    def validate_email(self, value):
+        """Проверяем, что email уникален."""
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("Пользователь с таким email уже существует")
+        return value
+
     def create(self, validated_data):
+        # Если username не указан — генерируем из email
+        username = validated_data.get('username', '').strip()
+        if not username:
+            username = validated_data['email'].split('@')[0]
+            # Если такой username уже есть — добавляем случайный суффикс
+            if User.objects.filter(username=username).exists():
+                username = f"{username}_{uuid.uuid4().hex[:6]}"
+
         user = User.objects.create_user(
-            username=validated_data['username'],
+            username=username,
             email=validated_data['email'],
             password=validated_data['password'],
             first_name=validated_data.get('first_name', ''),

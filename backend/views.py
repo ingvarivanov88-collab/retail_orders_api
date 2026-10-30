@@ -5,11 +5,11 @@ from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth import authenticate, login, get_user_model
 from django.shortcuts import render
 from django.db.models import Q
+from django.db import transaction
 from django.core.validators import URLValidator
 from django.core.exceptions import ValidationError
-from requests import get
-from yaml import SafeLoader
-from yaml import load as yaml_load
+from requests import get, RequestException
+import yaml
 from .models import (
     ProductInfo, Order, OrderItem, Contact, Shop, Category, Product, Parameter, ProductParameter,
     ConfirmEmailToken
@@ -113,42 +113,93 @@ class CartView(APIView):
 
     def get(self, request):
         order, _ = Order.objects.get_or_create(user=request.user, state='basket')
-        items = order.ordered_items.all()
-        data = [{"id": item.id, "product_info": item.product_info.product.name, "quantity": item.quantity, "price": item.product_info.price} for item in items]
-        total = sum(item.product_info.price * item.quantity for item in items)
+        items = order.ordered_items.select_related(
+            'product_info__product',
+            'product_info__shop'
+        )
+
+        data = []
+        total = 0
+
+        for item in items:
+            price = item.product_info.price
+            item_total = price * item.quantity
+            total += item_total
+
+            data.append({
+                "id": item.id,
+                "product_info_id": item.product_info_id,
+                "product": item.product_info.product.name,
+                "shop": item.product_info.shop.name,
+                "quantity": item.quantity,
+                "price": price,
+                "sum": item_total,
+            })
+
         return Response({"cart_items": data, "total": total})
 
     def post(self, request):
-        order, _ = Order.objects.get_or_create(user=request.user, state='basket')
         product_info_id = request.data.get('product_info_id')
+        raw_quantity = request.data.get('quantity', 1)
 
-        try:
-            quantity = int(request.data.get('quantity', 1))
-        except (ValueError, TypeError):
-            return Response({"error": "quantity должно быть числом"}, status=status.HTTP_400_BAD_REQUEST)
-
-        if quantity <= 0:
-            return Response({"error": "quantity должно быть больше 0"}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            product_info = ProductInfo.objects.get(id=product_info_id, quantity__gt=0)
-        except ProductInfo.DoesNotExist:
-            return Response({"error": "Товар не найден"}, status=status.HTTP_404_NOT_FOUND)
-
-        if quantity > product_info.quantity:
+        if isinstance(raw_quantity, bool) or not str(raw_quantity).isdigit():
             return Response(
-                {"error": f"На складе только {product_info.quantity} шт."},
+                {"error": "Количество должно быть целым числом"},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        order_item, created = OrderItem.objects.get_or_create(
-            order=order,
-            product_info=product_info,
-            defaults={'quantity': quantity}
-        )
-        if not created:
-            order_item.quantity += quantity
-        order_item.save()
+        quantity = int(raw_quantity)
+
+        if quantity <= 0:
+            return Response(
+                {"error": "Количество должно быть больше нуля"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        with transaction.atomic():
+            product_info = (
+                ProductInfo.objects.select_for_update()
+                .filter(id=product_info_id, shop__state=True)
+                .first()
+            )
+
+            if product_info is None:
+                return Response(
+                    {"error": "Товар не найден или недоступен"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            order, _ = Order.objects.get_or_create(
+                user=request.user,
+                state='basket'
+            )
+
+            order_item = OrderItem.objects.filter(
+                order=order,
+                product_info=product_info
+            ).first()
+
+            current_quantity = order_item.quantity if order_item else 0
+            total_quantity = current_quantity + quantity
+
+            if total_quantity > product_info.quantity:
+                return Response(
+                    {"error": (
+                        f"На складе {product_info.quantity} шт., "
+                        f"в корзине уже {current_quantity} шт."
+                    )},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if order_item:
+                order_item.quantity = total_quantity
+                order_item.save(update_fields=['quantity'])
+            else:
+                OrderItem.objects.create(
+                    order=order,
+                    product_info=product_info,
+                    quantity=quantity
+                )
 
         return Response({"message": "Товар добавлен в корзину"}, status=status.HTTP_201_CREATED)
 
@@ -198,34 +249,102 @@ class OrderView(APIView):
 
     def post(self, request):
         contact_id = request.data.get('contact_id')
-        try:
-            contact = Contact.objects.get(id=contact_id, user=request.user)
-        except Contact.DoesNotExist:
-            return Response({"error": "Адрес не найден"}, status=status.HTTP_404_NOT_FOUND)
 
-        order = Order.objects.filter(user=request.user, state='basket').first()
-        if not order or not order.ordered_items.exists():
-            return Response({"error": "Корзина пуста"}, status=status.HTTP_400_BAD_REQUEST)
+        contact = Contact.objects.filter(
+            id=contact_id,
+            user=request.user
+        ).first()
 
-        order.state = 'new'
-        order.contact = contact
-        order.save()
+        if contact is None:
+            return Response(
+                {"error": "Адрес доставки не найден"},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
-        items_data = []
-        for item in order.ordered_items.all():
-            items_data.append({
-                "product": item.product_info.product.name,
-                "quantity": item.quantity,
-                "price": str(item.product_info.price)
-            })
+        with transaction.atomic():
+            order = (
+                Order.objects.select_for_update()
+                .filter(user=request.user, state='basket')
+                .first()
+            )
 
-        user_email = request.user.email
-        if user_email:
-            send_order_confirmation_task.delay(user_email, order.id, items_data)
+            if order is None:
+                return Response(
+                    {"error": "Корзина пуста"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-        send_invoice_to_admin_task.delay(order.id, items_data, request.user.username)
+            order_items = list(order.ordered_items.all())
 
-        return Response({"message": "Заказ оформлен", "order_id": order.id}, status=status.HTTP_201_CREATED)
+            if not order_items:
+                return Response(
+                    {"error": "В корзине нет товаров"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            stock_updates = []
+            items_data = []
+
+            for item in order_items:
+                product_info = (
+                    ProductInfo.objects.select_for_update()
+                    .select_related('product', 'shop')
+                    .get(id=item.product_info_id)
+                )
+
+                if not product_info.shop.state:
+                    return Response(
+                        {"error": (
+                            f"Магазин {product_info.shop.name} "
+                            "не принимает заказы"
+                        )},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                if item.quantity > product_info.quantity:
+                    return Response(
+                        {"error": (
+                            f"Недостаточно товара: "
+                            f"{product_info.product.name}. "
+                            f"Доступно: {product_info.quantity}"
+                        )},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                stock_updates.append((product_info, item.quantity))
+                items_data.append({
+                    "product": product_info.product.name,
+                    "quantity": item.quantity,
+                    "price": str(product_info.price)
+                })
+
+            for product_info, quantity in stock_updates:
+                product_info.quantity -= quantity
+                product_info.save(update_fields=['quantity'])
+
+            order.state = 'new'
+            order.contact = contact
+            order.save(update_fields=['state', 'contact'])
+
+            order_id = order.id
+            user_email = request.user.email
+            username = request.user.username
+
+            def send_notifications():
+                if user_email:
+                    send_order_confirmation_task.delay(
+                        user_email, order_id, items_data
+                    )
+                send_invoice_to_admin_task.delay(
+                    order_id, items_data, username
+                )
+
+            transaction.on_commit(send_notifications)
+
+        return Response(
+            {"message": "Заказ оформлен", "order_id": order_id},
+            status=status.HTTP_201_CREATED
+        )
 
     def get(self, request):
         orders = Order.objects.filter(user=request.user).exclude(state='basket').order_by('-dt')
@@ -260,34 +379,81 @@ class OrderStatusUpdateView(APIView):
         return Response({"error": "Неверный статус"}, status=status.HTTP_400_BAD_REQUEST)
 
 
-# Обновление прайса поставщиком (без удаления старых ProductInfo).
+# Обновление прайса поставщиком.
 class PartnerUpdateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
         url = request.data.get('url')
-        if url:
-            validate_url = URLValidator()
-            try:
-                validate_url(url)
-            except ValidationError as e:
-                return Response({'Status': False, 'Error': str(e)}, status=400)
-            else:
-                stream = get(url).content
-                data = yaml_load(stream, Loader=SafeLoader)
 
-                shop, _ = Shop.objects.get_or_create(name=data['shop'], user_id=request.user.id)
+        if not url:
+            return Response(
+                {"error": "Укажите URL прайс-листа"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-                for category in data['categories']:
-                    category_object, _ = Category.objects.get_or_create(id=category['id'], name=category['name'])
-                    category_object.shops.add(shop.id)
+        try:
+            URLValidator()(url)
+
+            response = get(url, timeout=15)
+            response.raise_for_status()
+
+            data = yaml.safe_load(response.content)
+
+            if not isinstance(data, dict):
+                raise ValueError("Неверная структура YAML")
+
+            if not data.get('shop'):
+                raise ValueError("Не указано название магазина")
+
+            if not isinstance(data.get('categories'), list):
+                raise ValueError("Отсутствует список категорий")
+
+            if not isinstance(data.get('goods'), list):
+                raise ValueError("Отсутствует список товаров")
+
+            with transaction.atomic():
+                shop, _ = Shop.objects.get_or_create(
+                    user=request.user,
+                    defaults={'name': data['shop']}
+                )
+
+                if shop.name != data['shop']:
+                    shop.name = data['shop']
+                    shop.save(update_fields=['name'])
+
+                category_map = {}
+
+                for cat_data in data['categories']:
+                    category = Category.objects.filter(
+                        name=cat_data['name']
+                    ).first()
+
+                    if category is None:
+                        category = Category.objects.create(
+                            name=cat_data['name']
+                        )
+
+                    category.shops.add(shop)
+                    category_map[cat_data['id']] = category
 
                 for item in data['goods']:
+                    category = category_map.get(item['category'])
+
+                    if category is None:
+                        raise ValueError(
+                            f"Категория {item['category']} "
+                            "отсутствует в прайс-листе"
+                        )
+
                     product, _ = Product.objects.update_or_create(
                         name=item['name'],
-                        category_id=item['category'],
-                        defaults={'description': item.get('description', '')}
+                        category=category,
+                        defaults={
+                            'description': item.get('description', '')
+                        }
                     )
+
                     product_info, _ = ProductInfo.objects.update_or_create(
                         external_id=item['id'],
                         product=product,
@@ -295,20 +461,38 @@ class PartnerUpdateView(APIView):
                         defaults={
                             'model': item.get('model', ''),
                             'price': item['price'],
-                            'price_rrc': item.get('price_rrc', item['price']),
+                            'price_rrc': item.get(
+                                'price_rrc', item['price']
+                            ),
                             'quantity': item.get('quantity', 0),
                         }
                     )
-                    for name, value in item['parameters'].items():
-                        parameter_object, _ = Parameter.objects.get_or_create(name=name)
+
+                    for name, value in item.get('parameters', {}).items():
+                        parameter, _ = Parameter.objects.get_or_create(name=name)
                         ProductParameter.objects.update_or_create(
                             product_info=product_info,
-                            parameter=parameter_object,
-                            defaults={'value': value}
+                            parameter=parameter,
+                            defaults={'value': str(value)}
                         )
 
-                return Response({'Status': True})
-        return Response({'Status': False, 'Errors': 'Не указаны все необходимые аргументы'}, status=400)
+            return Response({
+                "Status": True,
+                "message": "Прайс-лист обновлён"
+            })
+
+        except (
+            ValidationError,
+            RequestException,
+            yaml.YAMLError,
+            ValueError,
+            KeyError,
+            TypeError,
+        ) as exc:
+            return Response(
+                {"Status": False, "error": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 
 # Заказы поставщика.
@@ -344,17 +528,32 @@ class PartnerStateUpdateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def patch(self, request):
-        try:
-            shop = Shop.objects.get(user=request.user)
-        except Shop.DoesNotExist:
+        shop = Shop.objects.filter(user=request.user).first()
+
+        if shop is None:
             return Response({"error": "У вас нет магазина"}, status=status.HTTP_404_NOT_FOUND)
 
         new_state = request.data.get('state')
-        if new_state is None:
-            return Response({"error": "Укажите state (true/false)"}, status=status.HTTP_400_BAD_REQUEST)
 
-        shop.state = bool(new_state)
-        shop.save()
+        if isinstance(new_state, bool):
+            state = new_state
+        elif isinstance(new_state, str):
+            value = new_state.strip().lower()
+            if value not in ('true', 'false'):
+                return Response(
+                    {"error": "state должно быть true или false"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            state = value == 'true'
+        else:
+            return Response(
+                {"error": "state должно быть true или false"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        shop.state = state
+        shop.save(update_fields=['state'])
+
         return Response({"message": "Статус приёма заказов обновлён", "state": shop.state})
 
 

@@ -29,19 +29,21 @@ def do_import(file_path):
 
     shop, _ = Shop.objects.get_or_create(name=shop_name)
 
-    # Если в файле есть 'goods' (формат shop1.yaml)
+    # Если формат shop1.yaml (с goods)
     if goods:
         for item in goods:
-            category_id = item.get('category')
-            category = None
-            if category_id:
-                for cat in categories:
-                    if cat.get('id') == category_id:
-                        category, _ = Category.objects.get_or_create(id=category_id, name=cat.get('name'))
-                        category.shops.add(shop)
-                        break
+            # Сопоставляем категорию по названию (а не по id)
+            category_name = None
+            for cat in categories:
+                if cat.get('id') == item.get('category'):
+                    category_name = cat.get('name')
+                    break
 
-            # Используем update_or_create, чтобы обновлять описание
+            category = None
+            if category_name:
+                category, _ = Category.objects.get_or_create(name=category_name)
+                category.shops.add(shop)
+
             product, _ = Product.objects.update_or_create(
                 name=item['name'],
                 category=category,
@@ -67,7 +69,7 @@ def do_import(file_path):
                     parameter=parameter,
                     defaults={'value': str(value)}
                 )
-    # Если в файле есть 'products' внутри категорий (формат shop_big.yaml)
+    # Если формат shop_big.yaml (с products внутри категорий)
     else:
         for cat_data in categories:
             cat_name = cat_data.get('name')
@@ -76,7 +78,6 @@ def do_import(file_path):
 
             products = cat_data.get('products', [])
             for prod_data in products:
-                # Используем update_or_create, чтобы обновлять описание
                 product, _ = Product.objects.update_or_create(
                     name=prod_data['name'],
                     category=category,
@@ -128,7 +129,7 @@ def send_invoice_to_admin_task(order_id, items, username):
     message += 'Состав заказа:\n'
     for item in items:
         message += f'- {item["product"]} (x{item["quantity"]}) — {item["price"]} руб.\n'
-    send_email.delay(subject, message, ['admin@retail-orders-api.ru'])
+    send_email.delay(subject, message, [settings.ADMIN_ORDER_EMAIL])
 
 
 @shared_task

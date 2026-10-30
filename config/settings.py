@@ -142,6 +142,10 @@ LOGOUT_REDIRECT_URL = '/api/products/'
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 DEFAULT_FROM_EMAIL = 'noreply@retail-orders-api.ru'
 
+# Адрес администратора, на который уходят накладные по заказам.
+# Можно переопределить через переменную окружения ADMIN_ORDER_EMAIL.
+ADMIN_ORDER_EMAIL = os.getenv('ADMIN_ORDER_EMAIL', 'admin@example.com')
+
 # --- НАСТРОЙКА CELERY ---
 # Redis используется как брокер сообщений и хранилище результатов.
 CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://redis:6379/0')
